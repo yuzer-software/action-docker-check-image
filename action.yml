@@ -1,0 +1,56 @@
+name: 'action-docker-check-image'
+description: 'Check if image already exist on SCW registry'
+inputs:
+  container_registry_server:
+    description: “Docker private registry url”
+    required: true
+  container_registry_login:
+    description: “Login for image registry”
+    required: true
+  container_registry_password:
+    description: “Password for image registry (token for scw)”
+    required: true
+  BATCH:  
+    description: "Set to true to check batch docker image"
+    required: false
+outputs:
+  image_not_found:
+    description: "Set output if docker image is not found"
+    value: ${{ steps.check_image.outputs.image_not_found }}
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare
+      id: prep
+      run: |
+        IMAGE_NAME=${{ inputs.container_registry_server }}/${{ env.IMAGE_NAME }}
+        SHORTREF=${GITHUB_SHA::8}
+        if [[ ${GITHUB_REF} == 'refs/heads/ops' ]]; then
+          IMAGE_NAME=${IMAGE_NAME}-ops
+        fi
+        if [[ -n "${{ inputs.BATCH }}" ]]; then
+          IMAGE_NAME=${IMAGE_NAME}-batch
+        fi
+        TAG_SHA="${IMAGE_NAME}:${SHORTREF}"
+        echo ::set-output name=tag_sha::${TAG_SHA}
+      shell: bash
+
+    - name: check output
+      run: |
+        echo "The tag with short sha is ${{ steps.prep.outputs.tag_sha }}"
+      shell: bash
+
+    - name: Login to DockerHub
+      uses: docker/login-action@v1
+      with:
+        registry: ${{ inputs.container_registry_server }}
+        username: ${{ inputs.container_registry_login }}
+        password: ${{ inputs.container_registry_password }}
+
+    - name: Check if image exist on SCW docker registry
+      id: check_image
+      run: |
+        if ! docker manifest inspect ${{ steps.prep.outputs.tag_sha }} > /dev/null; then
+          echo ::set-output name=image_not_found::image_not_found
+        fi
+      shell: bash
