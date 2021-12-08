@@ -14,9 +14,12 @@ inputs:
     description: "Set to true to check batch docker image"
     required: false
 outputs:
+  image_found:
+    description: "Set output if image is found in SCW docker registry"
+    value: ${{ steps.check_existing_docker_image.outputs.image_found }}
   image_not_found:
-    description: "Set output if docker image is not found"
-    value: ${{ steps.check_image.outputs.image_not_found }}
+    description: "Set output if image is not found in SCW docker registry"
+    value: ${{ steps.check_existing_docker_image.outputs.image_not_found }}
 runs:
   using: "composite"
   steps:
@@ -48,9 +51,11 @@ runs:
         password: ${{ inputs.container_registry_password }}
 
     - name: Check if image exist on SCW docker registry
-      id: check_image
+      id: check_existing_docker_image
       run: |
-        if ! docker manifest inspect ${{ steps.prep.outputs.tag_sha }} > /dev/null; then
-          echo ::set-output name=image_not_found::image_not_found
+        if docker manifest inspect ${{ steps.prep.outputs.tag_sha }} > /dev/null; then
+          echo ::set-output name=image_found::true
+        else
+          echo ::set-output name=image_not_found::true
         fi
       shell: bash
