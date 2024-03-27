@@ -20,9 +20,6 @@ outputs:
   image_found:
     description: 'Set output if image is found in SCW docker registry'
     value: ${{ steps.check_existing_docker_image.outputs.image_found }}
-  image_not_found:
-    description: 'Set output if image is not found in SCW docker registry'
-    value: ${{ steps.check_existing_docker_image.outputs.image_not_found }}
 runs:
   using: 'composite'
   steps:
@@ -32,19 +29,17 @@ runs:
         IMAGE_NAME=${{ inputs.container_registry_server }}/${{ inputs.image_name || env.IMAGE_NAME }}
         COMMIT_SHA=${{ github.event.inputs.commit_sha || github.sha }}
         SHORTREF=${COMMIT_SHA::8}
-        if [[ ${GITHUB_REF} == 'refs/heads/ops' ]]; then
-          IMAGE_NAME=${IMAGE_NAME}-ops
-        fi
+        TAGS_SHA="${IMAGE_NAME}:${SHORTREF}"
         if [[ -n "${{ inputs.BATCH }}" ]]; then
-          IMAGE_NAME=${IMAGE_NAME}-batch
+          delimiter=' '
+          TAGS_SHA+=${delimiter}${IMAGE_NAME}-batch:${SHORTREF}
         fi
-        TAG_SHA="${IMAGE_NAME}:${SHORTREF}"
-        echo "tag_sha=${TAG_SHA}" >> $GITHUB_OUTPUT
+        echo "tags_sha=${TAGS_SHA}" >> $GITHUB_OUTPUT
       shell: bash
 
     - name: check output
       run: |
-        echo "The tag with short sha is ${{ steps.prep.outputs.tag_sha }}"
+        echo "Image tags: ${{ steps.prep.outputs.tags_sha }}"
       shell: bash
 
     - name: Login to DockerHub
@@ -57,9 +52,12 @@ runs:
     - name: Check if image exist on SCW docker registry
       id: check_existing_docker_image
       run: |
-        if docker manifest inspect ${{ steps.prep.outputs.tag_sha }} > /dev/null; then
-          echo "image_found=true" >> $GITHUB_OUTPUT
-        else
-          echo "image_not_found=true" >> $GITHUB_OUTPUT
-        fi
+        for tag in ${{ steps.prep.outputs.tags_sha }}; do
+            if docker manifest inspect $tag > /dev/null; then
+            echo "image_found=true" >> $GITHUB_OUTPUT
+          else
+            echo "image_found=false" >> $GITHUB_OUTPUT
+            break
+          fi
+        done
       shell: bash
